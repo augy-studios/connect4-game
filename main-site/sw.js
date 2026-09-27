@@ -36,7 +36,7 @@
 // 5. The computer's Web Worker (js/ai-worker.js) and the engine it runs are
 //    precached like any other module, so the computer plays offline.
 
-const VERSION = "connect4-v2";
+const VERSION = "connect4-v3";
 
 const SHELL = `connect4-shell-${VERSION}`;
 
@@ -188,7 +188,8 @@ self.addEventListener("fetch", (event) => {
 async function navigation(request, url) {
   const shell = await caches.open(SHELL);
 
-  // A join link is the game page with a query; it gets the shell too.
+  // Join and replay links are the game page with a query; they get the
+  // shell too, which is what lets a shared replay open offline.
   const own = await shell.match(url.pathname);
   if (own) return own;
 

@@ -1,7 +1,7 @@
 import { COLOR_THEMES, applyColorTheme, applyMode, getStoredColorTheme, getStoredMode, getModePreference, initTheme } from "./theme.js";
 import { hydrateIcons, openModal, closeModal, closeTopModal } from "./ui.js";
 import { initUpdateBar } from "./update-bar.js";
-import { initGame } from "./game.js";
+import { initGame, readReplayLink } from "./game.js";
 import { initMultiplayer } from "./multiplayer.js";
 import { initLeaderboard } from "./leaderboard.js";
 import { initSettings } from "./settings.js";
@@ -107,7 +107,10 @@ function boot() {
   initLeaderboard();
   initSettings();
   const joinCode = takeJoinCode();
-  initGame({ joinCode });
+  // A shared replay: /?watch=...&seed=...&game=...; see game.js. It stays
+  // in the address while it is watched, so a reload shows it again.
+  const replayLink = readReplayLink(new URLSearchParams(location.search));
+  initGame({ joinCode, replayLink });
   initMultiplayer({ joinCode });
   hydrateIcons();
   initUpdateBar();

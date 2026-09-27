@@ -50,6 +50,7 @@ let launching = false;
 let gameCounter = 0;
 let leaveTimer = null;
 let net = null; // set by multiplayer.js for network games
+let watching = null; // a shared replay being watched: { seed, moves, kind }
 
 /* ---- setup ---- */
 
@@ -165,6 +166,7 @@ export function startGame(opts) {
   cancelMove();
   thinking = false;
   replayer.stop();
+  if (watching) closeWatch({ show: false });
   const now = Date.now();
   g = {
     id: ++gameCounter,
@@ -591,6 +593,7 @@ function finish(fresh, animate) {
   renderScoreLine();
   $("resultSeed").textContent = `Seed ${g.seed}`;
   $("copySeedLabel").textContent = "Copy seed";
+  $("shareLabel").textContent = "Share replay";
 
   $("nameInput").value = s.name ?? "";
   $("submitBtn").disabled = false;
@@ -601,6 +604,7 @@ function finish(fresh, animate) {
   $("againBtn").classList.toggle("hidden", guest);
   $("againLabel").textContent = g.mode === "network" ? "Next game" : "Play again";
   $("newGameBtn").classList.toggle("hidden", g.mode === "network");
+  $("newGameLabel").textContent = "New game";
 
   $("result").classList.remove("hidden");
   $("replayBar").classList.remove("hidden");
@@ -733,6 +737,7 @@ function onSubmit(event) {
 }
 
 function onAgain() {
+  if (watching) return playWatchedSeed();
   if (!g || launching) return;
   if (g.mode === "network") {
     net?.nextGame();
@@ -740,6 +745,149 @@ function onAgain() {
   }
   // A fresh seed, picked by the server where it can be.
   launch({ mode: g.mode, seed: null, level: g.level });
+}
+
+/* ---- sharing a replay ----
+   After chess-game's. A replay link holds the whole game: the seed, the
+   columns played as one digit each, and what kind of game it was, such as
+   /?watch=3322114&seed=K7XQ2MPD&game=hard. Nothing is stored anywhere, so a
+   link works for as long as the site does, offline too once the site has
+   been visited. It carries no score: anyone can edit a link, and only the
+   leaderboard's scores are checked. */
+
+// "easy" to "expert" against the computer, "local" or "network".
+const LINK_KINDS = [...COMPUTER_LEVELS, "local", "network"];
+
+const kindOf = (game) => (game.mode === "computer" ? game.level : game.mode);
+
+function replayLink(seed, moves, kind) {
+  const params = new URLSearchParams({ watch: moves.join(""), seed, game: kind });
+  return `${location.origin}/?${params}`;
+}
+
+// Through the device's share sheet where it has one, the clipboard otherwise.
+async function onShare() {
+  const src = watching ?? (g && { seed: g.seed, moves: g.moves, kind: kindOf(g) });
+  if (!src) return;
+  const url = replayLink(src.seed, src.moves, src.kind);
+  const label = $("shareLabel");
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: "Connect 4 replay", text: `Watch this game of Connect 4, seed ${src.seed}.`, url });
+      label.textContent = "Shared";
+      return;
+    } catch (err) {
+      // Dismissed: nothing to say. Refused or unsupported here: copy instead.
+      if (err?.name === "AbortError") return;
+    }
+  }
+  label.textContent = (await copyText(url)) ? "Link copied" : "Copy failed";
+}
+
+// Reads a replay link's parameters. Returns what to watch, { damaged: true }
+// if the link is broken, or null if this is not a replay link.
+export function readReplayLink(params) {
+  if (!params.has("watch")) return null;
+  const seed = normaliseSeed(params.get("seed"));
+  const digits = params.get("watch") ?? "";
+  const moves = /^[0-6]{1,42}$/.test(digits) ? [...digits].map(Number) : null;
+  if (!isValidSeed(seed) || !moves || !positionFrom(firstMover(seed), moves)) return { damaged: true };
+  const kind = params.get("game");
+  return { seed, moves, kind: LINK_KINDS.includes(kind) ? kind : "local" };
+}
+
+function watch(link) {
+  cancelMove();
+  thinking = false;
+  g = null;
+  watching = link;
+  const end = positionFrom(firstMover(link.seed), link.moves);
+  const vsComputer = COMPUTER_LEVELS.includes(link.kind);
+
+  showPanel("play");
+  resetResult();
+  for (const id of ["liveActions", "netBar", "takeback", "submitForm", "notScored", "submitted", "scoreChip"]) {
+    $(id).classList.add("hidden");
+  }
+  $("undoNote").textContent = "";
+  $("status").dataset.last = "";
+  $("status").textContent = "A shared replay.";
+  $("turnChip").dataset.turn = "";
+  $("turnChip").querySelector(".chip-text").textContent = "Replay";
+  $("timeChip").textContent = "";
+  $("seedChip").textContent = `Seed ${link.seed}`;
+  const names = {
+    [RED]: vsComputer ? "Player" : "Red",
+    [YELLOW]: vsComputer ? `Computer, ${LEVELS[link.kind].label}` : "Yellow",
+  };
+  for (const side of [RED, YELLOW]) {
+    const el = $(side === RED ? "redPlayer" : "yellowPlayer");
+    el.querySelector(".player-name").textContent = names[side];
+    el.classList.remove("active");
+  }
+
+  const w = end.winner;
+  if (!w) $("resultTitle").textContent = "Unfinished game";
+  else if (w === DRAW) $("resultTitle").textContent = "Draw";
+  else if (vsComputer) $("resultTitle").textContent = w === RED ? "The player won" : "The computer won";
+  else $("resultTitle").textContent = `${colourName(w)} won`;
+  const n = link.moves.length;
+  $("resultReason").textContent = !w
+    ? `The game stops here, after ${plural(n, "move")}.`
+    : w === DRAW
+      ? `The board is full after ${n} moves.`
+      : `Four in a row, on move ${n}.`;
+  $("resultScore").textContent = vsComputer
+    ? `Against the computer at ${LEVELS[link.kind].label} level.`
+    : link.kind === "network"
+      ? "Played over the network."
+      : "Two players on one device.";
+  $("resultSeed").textContent = `Seed ${link.seed}`;
+  $("copySeedLabel").textContent = "Copy seed";
+  $("shareLabel").textContent = "Share replay";
+  $("againBtn").classList.remove("hidden");
+  $("againLabel").textContent = "Play this seed";
+  $("newGameBtn").classList.remove("hidden");
+  $("newGameLabel").textContent = "Close replay";
+
+  $("result").classList.remove("hidden");
+  $("replayBar").classList.remove("hidden");
+  hydrateIcons($("play"));
+  replayer.load(link.seed, link.moves, { fromStart: true });
+}
+
+// Leaves a shared replay: the address loses the link, and the page goes
+// back to the game this browser had going, or to choosing one.
+function closeWatch({ show = true } = {}) {
+  watching = null;
+  replayer.stop();
+  const params = new URLSearchParams(location.search);
+  for (const key of ["watch", "seed", "game"]) params.delete(key);
+  const rest = params.toString();
+  history.replaceState(null, "", location.pathname + (rest ? `?${rest}` : "") + location.hash);
+  if (show && !resume()) {
+    showPanel("setup");
+    renderSetup();
+  }
+}
+
+// "Play this seed": the new-game screen with the seed filled in, and the
+// replay's kind of game chosen. As any pasted seed, it is practice.
+function playWatchedSeed() {
+  const { seed, kind } = watching;
+  closeWatch({ show: false });
+  if (COMPUTER_LEVELS.includes(kind)) {
+    setup.mode = "computer";
+    setup.level = kind;
+  } else {
+    setup.mode = kind;
+  }
+  saveSetup();
+  $("seedInput").value = seed;
+  $("seedNote").textContent = SEED_NOTE;
+  showPanel("setup");
+  renderSetup();
+  $("startBtn").focus();
 }
 
 /* ---- saving ---- */
@@ -923,7 +1071,7 @@ function pick(id, attr, key) {
   });
 }
 
-export function initGame({ joinCode } = {}) {
+export function initGame({ joinCode, replayLink: shared } = {}) {
   board = new BoardView($("board"), { onColumn: onBoardColumn });
   replayer = new Replay(board);
   loadSetup();
@@ -952,18 +1100,22 @@ export function initGame({ joinCode } = {}) {
 
   $("submitForm").addEventListener("submit", onSubmit);
   $("againBtn").addEventListener("click", onAgain);
-  $("newGameBtn").addEventListener("click", endGame);
+  $("newGameBtn").addEventListener("click", () => (watching ? closeWatch() : endGame()));
   $("resultBoardBtn").addEventListener("click", () => openLeaderboard());
+  $("shareBtn").addEventListener("click", onShare);
+  // The seed on screen: the game's, or the shared replay's.
+  const shownSeed = () => (watching ?? g)?.seed;
   $("copySeedBtn").addEventListener("click", async () => {
-    if (!g) return;
-    $("copySeedLabel").textContent = (await copyText(g.seed)) ? "Copied" : "Copy failed";
+    const seed = shownSeed();
+    if (!seed) return;
+    $("copySeedLabel").textContent = (await copyText(seed)) ? "Copied" : "Copy failed";
   });
   $("seedChip").addEventListener("click", async () => {
-    if (!g) return;
+    const seed = shownSeed();
+    if (!seed) return;
     const chip = $("seedChip");
-    const seed = g.seed;
     chip.textContent = (await copyText(seed)) ? "Seed copied" : `Seed ${seed}`;
-    setTimeout(() => g && (chip.textContent = `Seed ${g.seed}`), 1200);
+    setTimeout(() => shownSeed() && (chip.textContent = `Seed ${shownSeed()}`), 1200);
   });
 
   onSettingsChange(() => update());
@@ -972,11 +1124,21 @@ export function initGame({ joinCode } = {}) {
   setInterval(() => g && !isOver() && renderChips(), 1000);
 
   renderSetup();
+  if (shared && !shared.damaged) {
+    watch(shared);
+    return;
+  }
   if (joinCode) {
     setup.mode = "network";
     renderSetup();
     showPanel("setup");
     return;
+  }
+  // A broken replay link is dropped from the address, and said so on the
+  // new-game screen when that is where the page lands.
+  if (shared?.damaged) {
+    closeWatch({ show: false });
+    $("seedNote").textContent = "That replay link is damaged or incomplete, so it cannot be played back.";
   }
   if (!resume()) showPanel("setup");
 }

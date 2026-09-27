@@ -78,6 +78,18 @@ game plays back on the board by itself (a setting turns this off), with play,
 pause, a step back or forward, a jump to either end, a slider and the move
 list. It plays at 0.5×, 1×, 2× or 4×, remembered in this browser.
 
+**Sharing a replay.** Share replay, on any finished game, makes a link such
+as `/?watch=3322114&seed=K7XQ2MPD&game=hard`, through the device's share
+sheet where it has one and the clipboard otherwise, after chess-game's. The
+link is the whole game: the seed, each column played as one digit, and the kind
+of game (`easy` to `expert` against the computer, `local` or `network`).
+Nothing is stored anywhere, and a link opens offline once the site has been
+visited. Opening one plays the replay from the empty board without touching
+the viewer's own saved game; Close replay goes back to it, and Play this seed
+fills in the new-game screen, where it is practice like any pasted seed. A
+shared replay shows no score, since a link can be edited and only the
+leaderboard's scores are checked.
+
 **Scoring.** Only wins score. The "Win now" figure during play is what a win
 on the next move would be worth, and it falls as the game goes on.
 

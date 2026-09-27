@@ -51,8 +51,10 @@ export class Replay {
 
   // Starts at the end, dropping the last disc in when `animateLast` is set.
   // With `autoplay`, the finished board stays up for a moment, long enough to
-  // see the winning line, and then plays back from the empty board.
-  load(seed, moves, { autoplay = false, animateLast = false } = {}) {
+  // see the winning line, and then plays back from the empty board. With
+  // `fromStart`, as for a shared replay, it plays from the empty board at
+  // once, so the ending is not given away.
+  load(seed, moves, { autoplay = false, animateLast = false, fromStart = false } = {}) {
     this.pause();
     this.active = true;
     const first = firstMover(seed);
@@ -66,6 +68,12 @@ export class Replay {
       })
       .join("");
 
+    if (fromStart && this.frames.length > 1) {
+      this.show(0, false);
+      this.timer = setTimeout(() => this.play(), 600);
+      this.syncPlayButton(true);
+      return;
+    }
     this.show(this.frames.length - 1, animateLast);
     if (autoplay && this.frames.length > 1) {
       this.timer = setTimeout(() => this.play(), 2200);
