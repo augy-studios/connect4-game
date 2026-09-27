@@ -1,0 +1,64 @@
+# Connect 4 Game
+
+Connect 4 against a computer from Easy to Expert, on one device between two
+people, or between two devices on the same network. Every game has a seed that
+can be copied and played again, unlimited undo, an instant replay at the end,
+and a leaderboard for wins.
+
+Live at <https://connect4.uwuapps.org>. A PWA: once opened, it plays offline.
+
+## What runs where
+
+| Part | Runs on |
+| --- | --- |
+| `main-site/`, the PWA and its leaderboard API (`main-site/api/`) | Vercel, root directory `main-site` |
+| Database, `connect4_*` tables | The shared uwuapps Supabase project |
+| Network games | Browser to browser over WebRTC. PeerJS's public broker introduces the two devices; nothing of ours is in between |
+
+There is nothing on the VPS.
+
+## Layout
+
+```text
+README.md
+migrations/      SQL to run in the Supabase SQL editor, in number order
+scripts/         pre-deploy checks and the engine tests
+main-site/       the site Vercel deploys, including api/
+```
+
+The `uwuapps-*.md`, `update-bar-spec.md` and `STUN-p2p-spec.md` files at the
+root are the specs this is built to. `main-site/README.md` covers the app
+itself: the modes, scoring, anti-cheat, network games and the API.
+
+## First setup
+
+1. Run every file in `migrations/`, in number order, in the Supabase SQL
+   editor of the shared uwuapps project. Each is safe to run again. Never
+   edit one that has been run; a change is a new numbered file.
+2. On the Vercel project (root directory `main-site`), set the variables in
+   `main-site/.env.example`: `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`.
+3. Add the domain `connect4.uwuapps.org` to the Vercel project.
+4. Deploy.
+
+Without the variables the site still works in full; the API answers
+`not_configured` and every game says it is not scored.
+
+## Before every deploy
+
+1. Bump `VERSION` in `main-site/sw.js`. Without it, returning visitors keep
+   the previous build and never see the update bar.
+2. Run the checks, from the repo root, with Node 20 or later and nothing to
+   install:
+
+```text
+node scripts/check-sw.mjs          # the worker only activates when asked
+node scripts/check-precache.mjs    # everything the app loads works offline
+node scripts/check-theme.mjs       # pre-paint script matches js/theme.js
+node scripts/test-engine.mjs       # rules, seeds, the computer, scoring
+node scripts/test-verify.mjs       # the API's game check, without a database
+```
+
+**If you change `main-site/js/engine.js`,** games played on the old build stop
+verifying: the API replays every game with the code it has now, and a changed
+computer or score makes an open tab's game fail the check. Deploy such changes
+when a few refused submissions from open tabs are acceptable.

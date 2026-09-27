@@ -3,8 +3,43 @@
     "version": 2,
     "cleanUrls": true,
     "regions": ["sin1"],
-    "rewrites": [{
-        "source": "/",
-        "destination": "/"
-    }]
+    "functions": {
+        "api/game/submit.js": {
+            "maxDuration": 60,
+            "includeFiles": "js/engine.js"
+        },
+        "api/game/start.js": {
+            "includeFiles": "js/engine.js"
+        },
+        "api/game/finish.js": {
+            "includeFiles": "js/engine.js"
+        }
+    },
+    "headers": [{
+            "source": "/sw.js",
+            "headers": [{
+                    "key": "Cache-Control",
+                    "value": "public, max-age=0, must-revalidate"
+                },
+                {
+                    "key": "Service-Worker-Allowed",
+                    "value": "/"
+                }
+            ]
+        },
+        {
+            "source": "/manifest.json",
+            "headers": [{
+                "key": "Cache-Control",
+                "value": "public, max-age=0, must-revalidate"
+            }]
+        },
+        {
+            "source": "/(index.html)?",
+            "headers": [{
+                "key": "Cache-Control",
+                "value": "public, max-age=0, must-revalidate"
+            }]
+        }
+    ]
 }
